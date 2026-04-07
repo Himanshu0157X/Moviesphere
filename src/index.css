@@ -1,32 +1,42 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Permanent+Marker&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
+  --hot-pink: #d94b6a;
+  --electric-yellow: #f3c969;
+  --lime: #9ecf8d;
+  --sky: #6cb7d9;
+  --dark: #0f1017;
+  --cream: #f7efe2;
+  --purple: #6f5fa8;
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body: 'Space Mono', monospace;
+  --font-script: 'Permanent Marker', cursive;
+  --text-strong: #f7efe2;
+  --text-soft: rgba(247, 239, 226, 0.66);
+  --accent: #6cb7d9;
+  --accent-alt: #d4825b;
+  --accent-soft: #f3c969;
+  --border: rgba(247, 239, 226, 0.12);
+  --shadow-soft: 0 30px 80px rgba(0, 0, 0, 0.42);
+
   font-family: var(--font-body);
   line-height: 1.5;
   font-weight: 400;
   color: var(--text-strong);
   background:
-    radial-gradient(circle at top, rgba(69, 132, 255, 0.24), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(255, 127, 92, 0.18), transparent 22%),
-    linear-gradient(180deg, #07111a 0%, #0c1622 100%);
+    radial-gradient(circle at top, rgba(108, 183, 217, 0.14), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(217, 75, 106, 0.14), transparent 24%),
+    linear-gradient(180deg, #0f1017 0%, #171922 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  --font-display: 'Syne', 'Segoe UI', sans-serif;
-  --font-body: 'Space Grotesk', 'Segoe UI', sans-serif;
-  --text-strong: #edf4ff;
-  --text-soft: #9cb2ca;
-  --accent: #8fe1ff;
-  --accent-alt: #ff8f70;
-  --accent-soft: #72aef7;
-  --border: rgba(138, 170, 206, 0.14);
-  --shadow-soft: 0 30px 80px rgba(0, 0, 0, 0.34);
 }
 
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 html {
@@ -36,18 +46,11 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-}
-
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 36px 36px;
-  mask-image: radial-gradient(circle at center, black 48%, transparent 100%);
+  background:
+    radial-gradient(circle at top, rgba(108, 183, 217, 0.08), transparent 26%),
+    linear-gradient(180deg, #0f1017 0%, #171922 100%);
+  font-family: var(--font-body);
+  overflow-x: hidden;
 }
 
 button,
@@ -63,21 +66,7 @@ h1,
 h2,
 h3 {
   font-family: var(--font-display);
-  line-height: 0.98;
-}
-
-h1 {
-  margin: 0 0 16px;
-  font-size: clamp(2.9rem, 5vw, 5.4rem);
-  letter-spacing: -0.05em;
-}
-
-h2 {
-  font-size: clamp(1.8rem, 3vw, 2.6rem);
-}
-
-h3 {
-  font-size: 1.35rem;
+  line-height: 0.95;
 }
 
 p {

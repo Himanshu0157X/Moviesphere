@@ -1,4 +1,5 @@
-import { startTransition, useDeferredValue, useEffect, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useRef, useState } from 'react'
+import AuthPage, { STORAGE_KEYS } from './AuthPage'
 import './App.css'
 
 type Movie = {
@@ -66,7 +67,6 @@ type EraKey = 'any' | 'recent' | '2010s' | '2000s' | 'classics'
 
 const API_BASE = 'https://api.themoviedb.org/3'
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
-const BACKDROP_BASE = 'https://image.tmdb.org/t/p/original'
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY
 
 const GENRES: Genre[] = [
@@ -152,14 +152,6 @@ function getPoster(movie: Movie) {
     : 'https://placehold.co/500x750/1b1a18/f4efe6?text=Poster+Unavailable'
 }
 
-function getBackdrop(movie: Movie | null) {
-  if (!movie?.backdrop_path) {
-    return ''
-  }
-
-  return `${BACKDROP_BASE}${movie.backdrop_path}`
-}
-
 function getRuntimeLabel(runtime: number | null) {
   if (!runtime) {
     return 'Runtime unavailable'
@@ -218,6 +210,7 @@ async function fetchTmdb<T>(path: string, params: Record<string, string> = {}) {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState('')
   const [mode, setMode] = useState<'compass' | 'seed'>('compass')
   const [view, setView] = useState<'recommendations' | 'catalog'>('recommendations')
   const [selectedGenres, setSelectedGenres] = useState<number[]>([878, 9648])
@@ -236,6 +229,7 @@ function App() {
   const [seedLoading, setSeedLoading] = useState(false)
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null)
+  const [spotlightMovie, setSpotlightMovie] = useState<Movie | null>(null)
   const [movieDetails, setMovieDetails] = useState<MovieDetails | null>(null)
   const [movieCast, setMovieCast] = useState<CastMember[]>([])
   const [movieProviders, setMovieProviders] = useState<WatchProviderRegion | null>(null)
@@ -243,6 +237,53 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const deferredQuery = useDeferredValue(seedQuery)
+  const sliderRef = useRef<HTMLDivElement | null>(null)
+  const [cursorVisible, setCursorVisible] = useState(false)
+  const [cursorBig, setCursorBig] = useState(false)
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 })
+
+  useEffect(() => {
+    const savedUser = window.localStorage.getItem(STORAGE_KEYS.currentUser)
+
+    if (savedUser) {
+      setCurrentUser(savedUser)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!currentUser) {
+      return
+    }
+
+    function handleMove(event: MouseEvent) {
+      setCursorVisible(true)
+      setCursorPosition({ x: event.clientX, y: event.clientY })
+    }
+
+    function handleOver(event: MouseEvent) {
+      const target = event.target
+
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      setCursorBig(Boolean(target.closest('a, button, .shake-card, .ing-card, .hero-pill')))
+    }
+
+    function handleOut() {
+      setCursorBig(false)
+    }
+
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseover', handleOver)
+    document.addEventListener('mouseout', handleOut)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseover', handleOver)
+      document.removeEventListener('mouseout', handleOut)
+    }
+  }, [currentUser])
 
   useEffect(() => {
     let cancelled = false
@@ -291,7 +332,7 @@ function App() {
   }, [selectedGenres, selectedMood, selectedEra])
 
   useEffect(() => {
-    if (deferredQuery.trim().length < 2 || !API_KEY) {
+    if (deferredQuery.trim().length < 2) {
       setSearchResults([])
       return
     }
@@ -446,325 +487,553 @@ function App() {
   const activeMovies = view === 'catalog' ? catalogMovies : recommendationMovies
   const activeLoading = view === 'catalog' ? catalogLoading : recommendationLoading
   const seedMovieTitle = selectedSeedMovie?.title ?? ''
-  const spotlightMovie = activeMovies[1] ?? heroMovie
   const spotlightGenres = GENRES.filter((genre) =>
     selectedGenres.includes(genre.id),
   ).map((genre) => genre.name)
   const detailGenres = movieDetails?.genres.map((genre) => genre.name).join(', ') ?? ''
+  const activeEraLabel =
+    ERAS.find((era) => era.key === selectedEra)?.label ?? 'Any era'
+  const displayMovie = heroMovie ?? activeMovies[0] ?? null
+  const headlineMovie = selectedMovie ?? displayMovie
+  const statusText = errorMessage
+    ? errorMessage
+    : activeLoading
+      ? view === 'catalog'
+        ? 'Loading the latest catalog drops...'
+        : 'Cooking up movie recommendations...'
+      : ''
+
+  useEffect(() => {
+    if (activeMovies.length === 0) {
+      setSpotlightMovie(heroMovie)
+      return
+    }
+
+    const bestRatedMovie = [...activeMovies].sort(
+      (left, right) => right.vote_average - left.vote_average,
+    )[0]
+
+    setSpotlightMovie(bestRatedMovie ?? activeMovies[0])
+  }, [activeMovies, heroMovie])
+
+  function scrollSlider(direction: number) {
+    sliderRef.current?.scrollBy({
+      left: direction * 320,
+      behavior: 'smooth',
+    })
+  }
+
+  if (!currentUser) {
+    return <AuthPage onAuthSuccess={setCurrentUser} />
+  }
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">MovieSphere</p>
-          <p className="topbar-title">A movie recommendation website built to help users discover films faster through guided, personalized suggestions.</p>
+      <div
+        className={`cursor ${cursorVisible ? 'visible' : ''} ${cursorBig ? 'big' : ''}`}
+        id="cursor"
+        style={{ left: cursorPosition.x, top: cursorPosition.y }}
+      />
+
+      <div className="ticker">
+        <div className="ticker-inner">
+          <span className="ticker-word pink">MOVIESPHERE</span>
+          <span className="ticker-word yellow">FINDS</span>
+          <span className="ticker-word cream">YOUR NEXT WATCH</span>
+          <span className="ticker-word pink">BY MOOD</span>
+          <span className="ticker-word yellow">BY TASTE</span>
+          <span className="ticker-word cream">BY CATALOG</span>
+          <span className="ticker-sep">✦</span>
+          <span className="ticker-word yellow">MOVIESPHERE</span>
+          <span className="ticker-word pink">CURATES</span>
+          <span className="ticker-word cream">THE NIGHT</span>
+          <span className="ticker-word yellow">POPULAR PICKS</span>
+          <span className="ticker-word pink">HIDDEN GEMS</span>
+          <span className="ticker-word cream">ONE TAP AWAY</span>
+          <span className="ticker-sep">✦</span>
         </div>
-        <div className="topbar-badges" aria-label="Project badges">
-          <button
-            className={view === 'catalog' ? 'topbar-badge active' : 'topbar-badge'}
-            onClick={() => {
-              setView('catalog')
+      </div>
 
-              if (catalogMovies.length === 0) {
-                void loadCatalogPage(1, true)
-              }
-            }}
-            type="button"
-          >
-            All movies
-          </button>
-        </div>
-      </header>
-
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">Recommendation studio</p>
-          <h1>Shape a movie night with a cleaner, smarter recommendation cockpit.</h1>
-          <p className="hero-text">
-            MovieSphere turns uncertain browsing into a guided path. Tune by mood,
-            genre, and era, or start from a movie you already trust to discover a
-            sharper set of next-watch options.
-          </p>
-
-          <div className="mode-switch" role="tablist" aria-label="Recommendation mode">
+      <nav className="yard-nav">
+        <a className="nav-logo" href="#home">
+          MovieSphere
+        </a>
+        <ul className="nav-links">
+          <li>
+            <a href="#lineup">Lineup</a>
+          </li>
+          <li>
+            <a href="#discover">Discover</a>
+          </li>
+          <li>
             <button
-              className={mode === 'compass' ? 'active' : ''}
-              onClick={() => setMode('compass')}
-              type="button"
-            >
-              Preference compass
-            </button>
-            <button
-              className={mode === 'seed' ? 'active' : ''}
-              onClick={() => setMode('seed')}
-              type="button"
-            >
-              Start from a movie
-            </button>
-          </div>
+              className="cart-link"
+              onClick={() => {
+                setView('catalog')
 
-        </div>
-
-        <div
-          className="hero-feature"
-          style={
-            heroMovie
-              ? {
-                  backgroundImage: `linear-gradient(180deg, rgba(16, 18, 22, 0.12), rgba(16, 18, 22, 0.9)), url(${getBackdrop(
-                    heroMovie,
-                  )})`,
+                if (catalogMovies.length === 0) {
+                  void loadCatalogPage(1, true)
                 }
-              : undefined
-          }
-        >
-          <p className="feature-label">Current featured pick</p>
-          <h2>{heroMovie?.title ?? 'Waiting for recommendations'}</h2>
-          <p>
-            {heroMovie?.overview ??
-              'Add your TMDB key, then the first recommendation appears here as a cinematic feature card.'}
+              }}
+              type="button"
+            >
+              All movies
+            </button>
+          </li>
+          <li>
+            <button
+              className="ghost-link"
+              onClick={() => {
+                window.localStorage.removeItem(STORAGE_KEYS.currentUser)
+                setCurrentUser('')
+              }}
+              type="button"
+            >
+              Logout
+            </button>
+          </li>
+        </ul>
+      </nav>
+
+      <section className="hero" id="home">
+        <div className="hero-blob"></div>
+        <div className="hero-blob2"></div>
+
+        <div className="hero-text">
+          <div className="hero-eyebrow">
+            <div className="dot"></div>
+            <span>{`Welcome back • ${currentUser}`}</span>
+          </div>
+
+          <h1 className="hero-h1">
+            <span className="pink">YOUR</span>
+            <br />
+            <span>NEXT</span>
+            <br />
+            <span className="yellow">MOVIE</span>
+          </h1>
+
+          <p className="hero-sub">
+            MovieSphere turns a chaotic catalog into something bold, playful, and easy to explore. Start with a vibe, a favorite film, or dive straight into all movies.
           </p>
-        </div>
-      </section>
 
-      <section className="workspace">
-        <aside className="control-panel">
-          {view === 'catalog' ? (
-            <div className="panel-card">
-              <h3>TMDB catalog</h3>
-              <p>
-                This view opens a broader stream of movies from TMDB so you can browse
-                a much larger set of movie cards beyond the personalized suggestions.
-              </p>
-
-              <label className="panel-label">Catalog status</label>
-              <p className="supporting-text">
-                Showing page {catalogPage} from the TMDB discovery feed.
-              </p>
-
-              <div className="catalog-actions">
-                <button
-                  className="catalog-button"
-                  onClick={() => setView('recommendations')}
-                  type="button"
-                >
-                  Back to recommendations
-                </button>
-                <button
-                  className="catalog-button secondary"
-                  disabled={catalogLoading || !catalogHasMore}
-                  onClick={() => void loadCatalogPage(catalogPage + 1)}
-                  type="button"
-                >
-                  {catalogHasMore ? 'Load more' : 'No more pages'}
-                </button>
-              </div>
-            </div>
-          ) : mode === 'compass' ? (
-            <div className="panel-card">
-              <h3>Preference compass</h3>
-
-              <label className="panel-label">Mood</label>
-              <div className="chip-grid">
-                {MOODS.map((mood) => (
-                  <button
-                    key={mood.key}
-                    className={selectedMood === mood.key ? 'chip active' : 'chip'}
-                    onClick={() => setSelectedMood(mood.key)}
-                    type="button"
-                  >
-                    {mood.label}
-                  </button>
-                ))}
-              </div>
-              <p className="supporting-text">{activeMood?.description}</p>
-
-              <label className="panel-label">Genres</label>
-              <div className="chip-grid">
-                {GENRES.map((genre) => (
-                  <button
-                    key={genre.id}
-                    className={
-                      selectedGenres.includes(genre.id) ? 'chip active' : 'chip'
-                    }
-                    onClick={() =>
-                      setSelectedGenres((current) => toggleGenre(current, genre.id))
-                    }
-                    type="button"
-                  >
-                    {genre.name}
-                  </button>
-                ))}
-              </div>
-
-              <label className="panel-label">Era</label>
-              <div className="pill-row">
-                {ERAS.map((era) => (
-                  <button
-                    key={era.key}
-                    className={selectedEra === era.key ? 'pill active' : 'pill'}
-                    onClick={() => setSelectedEra(era.key)}
-                    type="button"
-                  >
-                    {era.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="panel-card">
-              <h3>Seed a recommendation</h3>
-              <label className="panel-label" htmlFor="seed-search">
-                Search a favorite movie
-              </label>
-              <input
-                id="seed-search"
-                className="search-input"
-                onChange={(event) => setSeedQuery(event.target.value)}
-                placeholder="Try Interstellar, La La Land, Dune..."
-                type="text"
-                value={seedQuery}
-              />
-
-              {searchResults.length > 0 ? (
-                <div className="search-results">
-                  {searchResults.map((movie) => (
-                    <button
-                      key={movie.id}
-                      className={
-                        selectedSeedMovie?.id === movie.id
-                          ? 'search-result active'
-                          : 'search-result'
-                      }
-                      onClick={() => {
-                        setSelectedSeedMovie(movie)
-                        setSeedQuery(movie.title)
-                        setSearchResults([])
-                      }}
-                      type="button"
-                    >
-                      <span>{movie.title}</span>
-                      <small>{getYear(movie.release_date)}</small>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              <p className="supporting-text">
-                Pick one movie you already trust and MovieSphere pulls related titles
-                from TMDB recommendations.
-              </p>
-            </div>
-          )}
-        </aside>
-
-        <section className="results-panel">
-          <div className="results-header">
-            <div>
-              <p className="eyebrow">Recommendations</p>
-              <h2>
-                {view === 'catalog'
-                  ? 'Movies Catalog'
-                  : mode === 'compass'
-                  ? 'Movies tuned to your preferences'
-                  : selectedSeedMovie
-                    ? `Because you liked ${seedMovieTitle}`
-                    : 'Choose a seed movie to unlock recommendations'}
-              </h2>
-            </div>
-            <p className="results-caption">
-              {view === 'catalog'
-                ? 'Browse a larger movie catalog with continuously loaded cards, making it easier to explore popular titles in one place.'
-                : 'The new layout emphasizes hierarchy: one hero recommendation, one spotlight detail panel, and a card grid built for fast scanning.'}
-            </p>
-          </div>
-
-          <div className="results-overview">
-            <section className="spotlight-card">
-              <p className="eyebrow">Spotlight</p>
-              <h3>{spotlightMovie?.title ?? 'Your next standout pick appears here'}</h3>
-              <div className="spotlight-meta">
-                <span>{spotlightMovie ? getYear(spotlightMovie.release_date) : 'Year'}</span>
-                <span>
-                  {spotlightMovie ? `${spotlightMovie.vote_average.toFixed(1)} / 10` : 'Rating'}
-                </span>
-                <span>{activeMood?.label ?? 'Mood'}</span>
-              </div>
-              <p>
-                {spotlightMovie?.overview ??
-                  'Recommendations will surface here with a clearer narrative summary to help the user compare options.'}
-              </p>
-            </section>
-
-            <section className="summary-card">
-              <p className="eyebrow">Active filters</p>
-              <div className="summary-list">
-                <div>
-                  <span>Mode</span>
-                  <strong>{mode === 'compass' ? 'Preference compass' : 'Seed movie'}</strong>
-                </div>
-                <div>
-                  <span>Mood</span>
-                  <strong>{activeMood?.label ?? 'Not set'}</strong>
-                </div>
-                <div>
-                  <span>Era</span>
-                  <strong>{ERAS.find((era) => era.key === selectedEra)?.label ?? 'Any era'}</strong>
-                </div>
-                <div>
-                  <span>Genres</span>
-                  <strong>{spotlightGenres.slice(0, 3).join(', ') || 'Open selection'}</strong>
-                </div>
-              </div>
-            </section>
-          </div>
-
-          {errorMessage ? <p className="status-banner error">{errorMessage}</p> : null}
-          {activeLoading ? (
-            <p className="status-banner">
-              {view === 'catalog' ? 'Loading TMDB movies...' : 'Loading recommendations...'}
-            </p>
-          ) : null}
-          {!API_KEY ? (
-            <p className="status-banner error">
-              Add `VITE_TMDB_API_KEY` to a `.env` file to fetch real movie data.
-            </p>
-          ) : null}
-
-          <div className="movie-grid">
-            {activeMovies.map((movie) => (
+          <div className="hero-pills">
+            {MOODS.map((mood) => (
               <button
-                className="movie-card"
-                key={movie.id}
-                onClick={() => setSelectedMovie(movie)}
+                className={selectedMood === mood.key ? 'hero-pill active' : 'hero-pill'}
+                key={mood.key}
+                onClick={() => {
+                  setView('recommendations')
+                  setMode('compass')
+                  setSelectedMood(mood.key)
+                }}
                 type="button"
               >
-                <img alt={`${movie.title} poster`} src={getPoster(movie)} />
-                <div className="movie-copy">
-                  <div className="movie-meta">
-                    <span>{getYear(movie.release_date)}</span>
-                    <span>{movie.vote_average.toFixed(1)} / 10</span>
-                  </div>
-                  <h3>{movie.title}</h3>
-                  <p>{movie.overview || 'No plot summary is available for this movie yet.'}</p>
-                </div>
+                {mood.label}
               </button>
             ))}
           </div>
 
-          {view === 'catalog' && API_KEY ? (
-            <div className="results-footer">
+          <div className="hero-btns">
+            <a className="btn-hero-primary" href="#lineup">
+              Browse picks ↓
+            </a>
+            <a className="btn-hero-secondary" href="#discover">
+              Tune the recommendations
+            </a>
+          </div>
+
+          <div className="hero-mini-stats">
+            <div className="hms-chip">
+              <div>
+                <div className="hms-val">{view === 'catalog' ? `${catalogPage}` : '2'}</div>
+                <div className="hms-lbl">{view === 'catalog' ? 'Catalog page' : 'Discovery modes'}</div>
+              </div>
+            </div>
+            <div className="hms-chip">
+              <div>
+                <div className="hms-val">{activeEraLabel}</div>
+                <div className="hms-lbl">Current era</div>
+              </div>
+            </div>
+            <div className="hms-chip">
+              <div>
+                <div className="hms-val">{activeMovies.length || 0}</div>
+                <div className="hms-lbl">Cards in view</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-img-wrap">
+          <div className="hero-img-ring">
+            <img
+              alt={displayMovie ? `${displayMovie.title} poster` : 'Movie poster'}
+              id="heroShakeImg"
+              src={displayMovie ? getPoster(displayMovie) : 'https://placehold.co/500x750/1b1a18/f4efe6?text=MovieSphere'}
+            />
+          </div>
+          <div className="hero-badge">{view === 'catalog' ? 'All movies' : activeMood?.label ?? 'Movie vibe'}</div>
+        </div>
+      </section>
+
+      <div className="stats-strip">
+        <div className="stat">
+          <div className="stat-num">{spotlightGenres.length || 3}</div>
+          <div className="stat-label">Genre signals</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{activeMovies.length}</div>
+          <div className="stat-label">Visible cards</div>
+        </div>
+        <div className="stat">
+          <div className="stat-num">{selectedMovie ? 'OPEN' : 'READY'}</div>
+          <div className="stat-label">Detail overlay</div>
+        </div>
+      </div>
+
+      <section className="discover-console" id="discover">
+        <div className="section-header">
+          <h2>
+            TUNE THE
+            <br />
+            <em>DISCOVERY</em>
+          </h2>
+          <p>
+            Shift between guided recommendations and the broader movie catalog without leaving the same energetic interface.
+          </p>
+        </div>
+
+        <div className="discover-grid">
+          <div className="discover-card">
+            <div className="mode-switch" role="tablist" aria-label="Recommendation mode">
               <button
-                className="catalog-button"
-                disabled={catalogLoading || !catalogHasMore}
-                onClick={() => void loadCatalogPage(catalogPage + 1)}
+                className={mode === 'compass' ? 'active' : ''}
+                onClick={() => {
+                  setView('recommendations')
+                  setMode('compass')
+                }}
                 type="button"
               >
-                {catalogHasMore ? 'Load more' : 'You have reached the loaded TMDB limit'}
+                Preference compass
+              </button>
+              <button
+                className={mode === 'seed' ? 'active' : ''}
+                onClick={() => {
+                  setView('recommendations')
+                  setMode('seed')
+                }}
+                type="button"
+              >
+                Start from a movie
               </button>
             </div>
-          ) : null}
-        </section>
+
+            {mode === 'compass' ? (
+              <>
+                <label className="panel-label">Genres</label>
+                <div className="chip-grid">
+                  {GENRES.map((genre) => (
+                    <button
+                      className={selectedGenres.includes(genre.id) ? 'chip active' : 'chip'}
+                      key={genre.id}
+                      onClick={() =>
+                        setSelectedGenres((current) => toggleGenre(current, genre.id))
+                      }
+                      type="button"
+                    >
+                      {genre.name}
+                    </button>
+                  ))}
+                </div>
+
+                <label className="panel-label">Era</label>
+                <div className="pill-row">
+                  {ERAS.map((era) => (
+                    <button
+                      className={selectedEra === era.key ? 'pill active' : 'pill'}
+                      key={era.key}
+                      onClick={() => setSelectedEra(era.key)}
+                      type="button"
+                    >
+                      {era.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="panel-label" htmlFor="seed-search">
+                  Search a favorite movie
+                </label>
+                <input
+                  className="search-input"
+                  id="seed-search"
+                  onChange={(event) => setSeedQuery(event.target.value)}
+                  placeholder="Try Interstellar, Dune, La La Land..."
+                  type="text"
+                  value={seedQuery}
+                />
+
+                {searchResults.length > 0 ? (
+                  <div className="search-results">
+                    {searchResults.map((movie) => (
+                      <button
+                        className={
+                          selectedSeedMovie?.id === movie.id
+                            ? 'search-result active'
+                            : 'search-result'
+                        }
+                        key={movie.id}
+                        onClick={() => {
+                          setSelectedSeedMovie(movie)
+                          setSeedQuery(movie.title)
+                          setSearchResults([])
+                        }}
+                        type="button"
+                      >
+                        <span>{movie.title}</span>
+                        <small>{getYear(movie.release_date)}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+
+          <div className="discover-card spotlight-card">
+            <p className="eyebrow">Spotlight</p>
+            <h3>{headlineMovie?.title ?? 'Movie spotlight loading'}</h3>
+            <div className="spotlight-meta">
+              <span>{headlineMovie ? getYear(headlineMovie.release_date) : 'Year'}</span>
+              <span>{headlineMovie ? `${headlineMovie.vote_average.toFixed(1)} / 10` : 'Rating'}</span>
+              <span>{view === 'catalog' ? 'Catalog mode' : activeMood?.label ?? 'Movie vibe'}</span>
+            </div>
+            <p>
+              {headlineMovie?.overview ??
+                'A featured movie summary appears here to give the page a strong editorial anchor.'}
+            </p>
+          </div>
+        </div>
       </section>
+
+      <section className="slider-section" id="lineup">
+        <div className="section-header">
+          <h2>
+            THE
+            <br />
+            <em>LINEUP</em>
+          </h2>
+          <p>
+            {view === 'catalog'
+              ? 'Browse a wider stream of popular titles from TMDB and open any card for the full movie breakdown.'
+              : mode === 'seed'
+                ? seedMovieTitle
+                  ? `Because you picked ${seedMovieTitle}, here is a sharper lineup of related titles.`
+                  : 'Start from one movie you already trust, then let MovieSphere build the next row for you.'
+                : 'These cards are tuned by mood, genres, and era so you can compare strong options quickly.'}
+          </p>
+        </div>
+
+        {statusText ? (
+          <p className={`status-banner ${errorMessage ? 'error' : ''}`}>{statusText}</p>
+        ) : null}
+
+        <div className="slider-viewport">
+          <div className="slider-track" ref={sliderRef}>
+            {activeMovies.map((movie, index) => (
+              <button
+                className={`shake-card ${index % 5 === 0 ? 'card-strawberry' : index % 5 === 1 ? 'card-coconut' : index % 5 === 2 ? 'card-blueberry' : index % 5 === 3 ? 'card-banana' : 'card-grapefruit'}`}
+                key={movie.id}
+                onClick={() => setSelectedMovie(movie)}
+                type="button"
+              >
+                <span className="card-chip">{view === 'catalog' ? 'Catalog' : activeMood?.label ?? 'Pick'}</span>
+                <img alt={`${movie.title} poster`} className="card-img" src={getPoster(movie)} />
+                <div className="card-bottom">
+                  <div className="card-name">{movie.title}</div>
+                  <div className="card-desc">
+                    {movie.overview || 'No plot summary is available for this movie yet.'}
+                  </div>
+                  <div className="card-footer">
+                    <div className="card-price">{movie.vote_average.toFixed(1)} ★</div>
+                    <span className="card-btn">OPEN +</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="slider-controls">
+          <button className="ctrl-btn" onClick={() => scrollSlider(-1)} type="button">
+            ←
+          </button>
+          <button className="ctrl-btn" onClick={() => scrollSlider(1)} type="button">
+            →
+          </button>
+          {view === 'catalog' ? (
+            <button
+              className="catalog-button inline"
+              disabled={catalogLoading || !catalogHasMore}
+              onClick={() => void loadCatalogPage(catalogPage + 1)}
+              type="button"
+            >
+              {catalogHasMore ? 'Load more' : 'No more pages'}
+            </button>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="newsletter">
+        <div className="newsletter-inner">
+          <div className="nl-left">
+            <div className="nl-tag">🎬 Join the sphere</div>
+            <h2>
+              SAVE YOUR
+              <br />
+              TASTE.
+              <br />
+              BROWSE.
+            </h2>
+            <div className="nl-proof">
+              <div className="nl-avatars">
+                <div className="nl-avatar av1">M</div>
+                <div className="nl-avatar av2">S</div>
+                <div className="nl-avatar av3">P</div>
+                <div className="nl-avatar av4">R</div>
+              </div>
+              <div className="nl-proof-text">
+                <strong>{currentUser}</strong>
+                is already exploring with MovieSphere
+              </div>
+            </div>
+          </div>
+          <div className="nl-right">
+            <div className="nl-perks">
+              <div className="nl-perk">
+                <div className="nl-perk-icon">🔥</div>
+                <span>Jump between recommendations and catalog browsing instantly</span>
+              </div>
+              <div className="nl-perk">
+                <div className="nl-perk-icon">📺</div>
+                <span>Open movie details and streaming availability in one tap</span>
+              </div>
+              <div className="nl-perk">
+                <div className="nl-perk-icon">🧠</div>
+                <span>Use mood, era, and taste to guide discovery instead of endless scrolling</span>
+              </div>
+            </div>
+            <div className="nl-form">
+              <input className="nl-input" readOnly type="text" value={`Logged in as ${currentUser}`} />
+              <button
+                className="nl-btn"
+                onClick={() => {
+                  setView('catalog')
+
+                  if (catalogMovies.length === 0) {
+                    void loadCatalogPage(1, true)
+                  }
+                }}
+                type="button"
+              >
+                OPEN CATALOG ↗
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="lifestyle">
+        <div className="lifestyle-inner">
+          <div className="lifestyle-img-wrap">
+            <div className="lifestyle-img-frame">
+              <img
+                alt={spotlightMovie ? `${spotlightMovie.title} poster` : 'MovieSphere pick'}
+                src={spotlightMovie ? getPoster(spotlightMovie) : 'https://placehold.co/700x900/16131f/fef5e7?text=MovieSphere'}
+              />
+            </div>
+            <div className="ls-badge">{spotlightMovie ? getYear(spotlightMovie.release_date) : 'Featured'}</div>
+          </div>
+          <div className="lifestyle-content">
+            <div className="ls-kicker">movie night guide</div>
+            <h2 className="ls-title">
+              REFINE.
+              <br />
+              COMPARE.
+              <br />
+              WATCH.
+            </h2>
+            <p className="ls-copy">
+              {spotlightMovie?.overview ??
+                'Use the spotlight card to anchor your choice, then open the detail view whenever you want cast, runtime, and streaming availability.'}
+            </p>
+            <ul className="ls-features">
+              <li>
+                <div className="ls-dot"></div>
+                <strong>Current mode</strong> — {view === 'catalog' ? 'All movies catalog' : mode === 'compass' ? 'Preference compass' : 'Seed recommendation'}
+              </li>
+              <li>
+                <div className="ls-dot"></div>
+                <strong>Era focus</strong> — {activeEraLabel}
+              </li>
+              <li>
+                <div className="ls-dot"></div>
+                <strong>Genre signal</strong> — {spotlightGenres.slice(0, 3).join(', ') || 'Open selection'}
+              </li>
+            </ul>
+            <div className="ls-btns">
+              <a className="ls-btn-s" href="#discover">
+                Adjust filters
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <div className="footer-inner">
+          <div className="footer-logo-wrap">
+            <a className="footer-logo-text" href="#home">
+              MovieSphere
+            </a>
+            <span className="footer-dev-label">Recommendation interface</span>
+          </div>
+
+          <div className="footer-links">
+            <a href="#discover">Discover</a>
+            <a href="#lineup">Lineup</a>
+            <a href="#home">Back to top</a>
+          </div>
+
+          <div className="footer-contact">
+            <button
+              className="footer-contact-btn btn-codepen"
+              onClick={() => {
+                setView('recommendations')
+                setMode('seed')
+              }}
+              type="button"
+            >
+              Seed mode
+            </button>
+            <button
+              className="footer-contact-btn btn-email"
+              onClick={() => {
+                setView('catalog')
+
+                if (catalogMovies.length === 0) {
+                  void loadCatalogPage(1, true)
+                }
+              }}
+              type="button"
+            >
+              All movies
+            </button>
+          </div>
+        </div>
+      </footer>
 
       {selectedMovie ? (
         <section className="detail-overlay" role="dialog" aria-modal="true" aria-label="Movie details">
