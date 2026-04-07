@@ -190,18 +190,25 @@ function toggleGenre(current: number[], genreId: number) {
 }
 
 async function fetchTmdb<T>(path: string, params: Record<string, string> = {}) {
-  if (!API_KEY) {
-    throw new Error('Missing TMDB API key. Add VITE_TMDB_API_KEY to your .env file.')
-  }
-
   const searchParams = new URLSearchParams({
-    api_key: API_KEY,
     language: 'en-US',
     include_adult: 'false',
     ...params,
   })
 
-  const response = await fetch(`${API_BASE}${path}?${searchParams.toString()}`)
+  const response = API_KEY
+    ? await fetch(
+        `${API_BASE}${path}?${new URLSearchParams({
+          api_key: API_KEY,
+          ...Object.fromEntries(searchParams),
+        }).toString()}`,
+      )
+    : await fetch(
+        `/api/tmdb?${new URLSearchParams({
+          path,
+          ...Object.fromEntries(searchParams),
+        }).toString()}`,
+      )
 
   if (!response.ok) {
     throw new Error('TMDB request failed. Please check the API key and try again.')

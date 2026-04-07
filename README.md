@@ -34,6 +34,22 @@ npm run dev
 npm run build
 ```
 
+## Vercel Deployment
+
+For Vercel, do not rely on the local `.env` file. Add one of these environment variables in your Vercel project settings and redeploy:
+
+```bash
+TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+```
+
+or
+
+```bash
+TMDB_API_KEY=your_tmdb_api_key
+```
+
+The app is configured to use the server-side `/api/tmdb` proxy on Vercel, so TMDB credentials do not need to be exposed in the browser.
+
 ## HCI Artifacts
 - `docs/hci/user-research.md`
 - `docs/hci/requirements.md`
