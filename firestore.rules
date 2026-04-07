@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      allow create, update: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.displayName is string
+        && request.resource.data.email is string
+        && (!('bio' in request.resource.data) || request.resource.data.bio is string);
+
+      allow delete: if false;
+
+      match /watchlist/{movieId} {
+        allow read: if isOwner(userId);
+
+        allow create, update: if isOwner(userId)
+          && request.resource.data.id is int
+          && request.resource.data.title is string;
+
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /movieDiscussions/{movieId} {
+      allow read: if true;
+      allow write: if false;
+
+      match /comments/{commentId} {
+        allow read: if true;
+
+        allow create: if signedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.userName is string
+          && request.resource.data.text is string
+          && request.resource.data.likes is list
+          && request.resource.data.likes.size() == 0
+          && request.resource.data.createdAtMs is int;
+
+        allow update: if signedIn()
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.userName == resource.data.userName
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.createdAtMs == resource.data.createdAtMs
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'likes',
+            'updatedAt',
+            'updatedAtMs'
+          ]);
+
+        allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+      }
+
+      match /replies/{replyId} {
+        allow read: if true;
+
+        allow create: if signedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.commentId is string
+          && request.resource.data.userName is string
+          && request.resource.data.text is string
+          && request.resource.data.createdAtMs is int;
+
+        allow update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+      }
+
+      match /ratings/{userId} {
+        allow read: if true;
+
+        allow create, update: if isOwner(userId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.userName is string
+          && request.resource.data.value is int
+          && request.resource.data.value >= 1
+          && request.resource.data.value <= 5
+          && request.resource.data.updatedAtMs is int;
+
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

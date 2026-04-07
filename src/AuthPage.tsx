@@ -1,21 +1,17 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+} from 'firebase/auth'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { auth, authReady, db, firebaseEnabled } from './firebase'
 import './AuthPage.css'
 
 type AuthPageProps = {
   onAuthSuccess: (userName: string) => void
 }
-
-type StoredUser = {
-  name: string
-  email: string
-  password: string
-}
-
-const STORAGE_KEYS = {
-  users: 'moviesphere-users',
-  currentUser: 'moviesphere-current-user',
-} as const
 
 const CARD_DATA = [
   '/8UlWHLMpgZm9bx6QYh0NFoq67TZ.jpg',
@@ -31,34 +27,13 @@ const CARD_DATA = [
   '/pIkRyD18kl4FhoCNQuWxWu5cBLM.jpg',
 ]
 
-function getStoredUsers() {
-  const rawUsers = window.localStorage.getItem(STORAGE_KEYS.users)
-
-  if (!rawUsers) {
-    return [] as StoredUser[]
-  }
-
-  try {
-    return JSON.parse(rawUsers) as StoredUser[]
-  } catch {
-    return []
-  }
-}
-
-function saveUsers(users: StoredUser[]) {
-  window.localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users))
-}
-
-function saveCurrentUser(name: string) {
-  window.localStorage.setItem(STORAGE_KEYS.currentUser, name)
-}
-
 function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   function resetForm(nextMode: 'login' | 'register') {
     setMode(nextMode)
@@ -68,8 +43,13 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
     setErrorMessage('')
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+
+    if (!firebaseEnabled || !auth || !db) {
+      setErrorMessage('Firebase is not configured yet. Add the Firebase env variables first.')
+      return
+    }
 
     const trimmedEmail = email.trim().toLowerCase()
     const trimmedName = name.trim()
@@ -80,38 +60,60 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
       return
     }
 
-    const users = getStoredUsers()
+    setSubmitting(true)
+    setErrorMessage('')
 
-    if (mode === 'register') {
-      const userExists = users.some((user) => user.email === trimmedEmail)
+    try {
+      await authReady
 
-      if (userExists) {
-        setErrorMessage('This email is already registered. Try logging in instead.')
+      if (mode === 'register') {
+        const credentials = await createUserWithEmailAndPassword(
+          auth,
+          trimmedEmail,
+          trimmedPassword,
+        )
+
+        await updateProfile(credentials.user, { displayName: trimmedName })
+        await setDoc(doc(db, 'users', credentials.user.uid), {
+          uid: credentials.user.uid,
+          displayName: trimmedName,
+          email: trimmedEmail,
+          bio: '',
+          createdAt: serverTimestamp(),
+        })
+
+        onAuthSuccess(trimmedName)
         return
       }
 
-      const nextUsers = [
-        ...users,
-        { name: trimmedName, email: trimmedEmail, password: trimmedPassword },
-      ]
+      const credentials = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword)
+      const userRef = doc(db, 'users', credentials.user.uid)
+      const existingUser = await getDoc(userRef)
 
-      saveUsers(nextUsers)
-      saveCurrentUser(trimmedName)
-      onAuthSuccess(trimmedName)
-      return
+      await setDoc(
+        userRef,
+        {
+          uid: credentials.user.uid,
+          displayName: credentials.user.displayName || 'MovieSphere User',
+          email: credentials.user.email || trimmedEmail,
+          ...(existingUser.exists()
+            ? {}
+            : {
+                bio: '',
+                createdAt: serverTimestamp(),
+              }),
+          lastLoginAt: serverTimestamp(),
+        },
+        { merge: true },
+      )
+      onAuthSuccess(credentials.user.displayName || 'MovieSphere User')
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Unable to complete authentication.',
+      )
+    } finally {
+      setSubmitting(false)
     }
-
-    const matchedUser = users.find(
-      (user) => user.email === trimmedEmail && user.password === trimmedPassword,
-    )
-
-    if (!matchedUser) {
-      setErrorMessage('Invalid email or password.')
-      return
-    }
-
-    saveCurrentUser(matchedUser.name)
-    onAuthSuccess(matchedUser.name)
   }
 
   return (
@@ -121,10 +123,15 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
           <p className="auth-eyebrow">MovieSphere access</p>
           <h1>Log in to enter a movie recommendation world built just for you.</h1>
           <p>
-            Create an account to save your place at the front door of MovieSphere,
-            then explore recommendations, catalogs, and movie details behind a single
-            animated entry experience.
+            Create an account to unlock your personal profile, watchlist, and movie
+            recommendations inside MovieSphere.
           </p>
+          {!firebaseEnabled ? (
+            <p className="auth-config-note">
+              Firebase setup is still required. Add your Firebase env values to use
+              real authentication, profiles, and watchlists.
+            </p>
+          ) : null}
         </div>
 
         <div className="scene">
@@ -165,15 +172,15 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
           <p className="auth-subtitle">
             {mode === 'login'
               ? 'Sign in to continue into MovieSphere.'
-              : 'Register once, then step into your personalized movie space.'}
+              : 'Register once, then keep your watchlist and profile with you.'}
           </p>
 
           {mode === 'register' ? (
             <label className="auth-field">
-              <span>Name</span>
+              <span>Display name</span>
               <input
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Your name"
+                placeholder="Choose your display name"
                 type="text"
                 value={name}
               />
@@ -202,8 +209,12 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
           {errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
 
-          <button className="auth-submit" type="submit">
-            {mode === 'login' ? 'Login to MovieSphere' : 'Create account'}
+          <button className="auth-submit" disabled={submitting || !firebaseEnabled} type="submit">
+            {submitting
+              ? 'Please wait...'
+              : mode === 'login'
+                ? 'Login to MovieSphere'
+                : 'Create account'}
           </button>
         </form>
       </section>
@@ -211,5 +222,4 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
   )
 }
 
-export { STORAGE_KEYS }
 export default AuthPage

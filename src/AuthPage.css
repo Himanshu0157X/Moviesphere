@@ -39,6 +39,14 @@
   color: var(--text-soft);
 }
 
+.auth-config-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(243, 201, 105, 0.12);
+  color: var(--electric-yellow);
+}
+
 .auth-eyebrow {
   margin-bottom: 18px;
   color: var(--accent-soft);
@@ -130,6 +138,11 @@
   font-weight: 700;
   color: #08111b;
   background: linear-gradient(135deg, var(--electric-yellow), var(--accent-alt));
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .scene,

@@ -2,6 +2,7 @@
 
 MovieSphere is a movie recommendation mini-project built around the full HCI cycle: user research, requirements, wireframing, prototyping, usability testing, and iteration.
 
+
 ## Features
 - Preference-based recommendations using mood, genre, and era
 - Seed-based recommendations from a movie you already like
@@ -50,8 +51,3 @@ TMDB_API_KEY=your_tmdb_api_key
 
 The app is configured to use the server-side `/api/tmdb` proxy on Vercel, so TMDB credentials do not need to be exposed in the browser.
 
-## HCI Artifacts
-- `docs/hci/user-research.md`
-- `docs/hci/requirements.md`
-- `docs/hci/wireframes.md`
-- `docs/hci/prototype-testing-iteration.md`
