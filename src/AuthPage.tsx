@@ -34,6 +34,9 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [hiddenCards, setHiddenCards] = useState<string[]>([])
+
+  const visibleCards = CARD_DATA.filter((item) => !hiddenCards.includes(item))
 
   function resetForm(nextMode: 'login' | 'register') {
     setMode(nextMode)
@@ -135,12 +138,17 @@ function AuthPage({ onAuthSuccess }: AuthPageProps) {
         </div>
 
         <div className="scene">
-          <div className="a3d" style={{ ['--n' as string]: CARD_DATA.length }}>
-            {CARD_DATA.map((item, index) => (
+          <div className="a3d" style={{ ['--n' as string]: Math.max(visibleCards.length, 1) }}>
+            {visibleCards.map((item, index) => (
               <img
                 alt="MovieSphere visual card"
                 className="card"
                 key={item}
+                onError={() => {
+                  setHiddenCards((current) =>
+                    current.includes(item) ? current : [...current, item],
+                  )
+                }}
                 src={`https://image.tmdb.org/t/p/w500${item}`}
                 style={{ ['--i' as string]: index }}
               />

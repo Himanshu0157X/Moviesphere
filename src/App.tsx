@@ -157,9 +157,10 @@ type TmdbFetchOptions = {
   signal?: AbortSignal
 }
 
-const API_BASE = 'https://api.themoviedb.org/3'
+const DIRECT_API_BASE = 'https://api.themoviedb.org/3'
 const IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
 const API_KEY = import.meta.env.VITE_TMDB_API_KEY
+const USE_DIRECT_TMDB = import.meta.env.DEV && Boolean(API_KEY)
 const FALLBACK_POSTER =
   'https://placehold.co/500x750/1b1a18/f4efe6?text=Poster+Unavailable'
 const TMDB_CACHE_TTL_MS = 10 * 60 * 1000
@@ -680,9 +681,9 @@ async function fetchTmdb<T>(
   }
 
   const request = (async () => {
-    const response = API_KEY
+    const response = USE_DIRECT_TMDB
       ? await fetch(
-          `${API_BASE}${path}?${new URLSearchParams({
+          `${DIRECT_API_BASE}${path}?${new URLSearchParams({
             api_key: API_KEY,
             ...Object.fromEntries(searchParams),
           }).toString()}`,
@@ -697,7 +698,7 @@ async function fetchTmdb<T>(
         )
 
     if (!response.ok) {
-      throw new Error('TMDB request failed. Please check the API key and try again.')
+      throw new Error('TMDB request failed. Please check TMDB credentials and network access.')
     }
 
     const data = (await response.json()) as T
